@@ -40,7 +40,7 @@ def create_logger(cfg, cfg_name, phase='train'):
     # set up logger
     if not root_output_dir.exists():
         print('=> creating {}'.format(root_output_dir))
-        root_output_dir.mkdir()
+        root_output_dir.mkdir(parents=True, exist_ok=True)
 
     dataset = cfg.DATASET.TRAIN_DATASET
     model, _ = get_model_name(cfg)
@@ -62,12 +62,12 @@ def create_logger(cfg, cfg_name, phase='train'):
     console = logging.StreamHandler()
     logging.getLogger('').addHandler(console)
 
-    tensorboard_log_dir = tensorboard_log_dir / dataset / model / \
-        (cfg_name + time_str)
-    print('=> creating {}'.format(tensorboard_log_dir))
-    tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
+    # tensorboard_log_dir = tensorboard_log_dir / dataset / model / \
+    #     (cfg_name + time_str)
+    # print('=> creating {}'.format(tensorboard_log_dir))
+    # tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
 
-    return logger, str(final_output_dir), str(tensorboard_log_dir)
+    return logger, str(final_output_dir), str(final_output_dir)
 
 
 def get_optimizer(cfg, model):

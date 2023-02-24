@@ -36,7 +36,7 @@ import models
 
 from core.config import config
 from core.config import update_config
-from core.function import validate_3d
+from core.function import speed_3d 
 from utils.utils import create_logger
 import lib.utils.misc as utils
 from mmcv.runner import get_dist_info
@@ -70,9 +70,9 @@ def parse_args():
 def main():
     args = parse_args()
     logger, final_output_dir, tb_log_dir = create_logger(
-        config, args.cfg, 'validate')
+        config, args.cfg, 'speed')
     config.GPUS = '0'
-    config.DATASET.ROOT = 'data/chi3d_s03'
+    config.DATASET.ROOT = 'data/chi3d_s04'
     config.DATASET.TEST_SUBSET = 'test'
     config.DATASET.TRAIN_SUBSET = 'test'
     device = torch.device(args.device)
@@ -138,43 +138,9 @@ def main():
         raise ValueError('Check the model file for testing!')
 
     for thr in config.DECODER.inference_conf_thr:
-        preds_single, meta_image_files_single = validate_3d(
+        speed_3d(
             config, model, test_loader, final_output_dir, thr,
             num_views=num_views)
-        preds = collect_results(preds_single, len(test_dataset))
-
-        if is_main_process():
-            if 'panoptic' in config.DATASET.TEST_DATASET \
-                or 'chi3d' in config.DATASET.TEST_DATASET \
-                    or 'h36m' in config.DATASET.TEST_DATASET:
-                tb = PrettyTable()
-                mpjpe_threshold = np.arange(25, 155, 25)
-                aps, recs, mpjpe, recall500 = test_loader.dataset.evaluate(preds)
-                tb.field_names = ['Threshold/mm'] + \
-                                 [f'{i}' for i in mpjpe_threshold]
-                tb.add_row(['AP'] + [f'{ap * 100:.2f}' for ap in aps])
-                tb.add_row(['Recall'] + [f'{re * 100:.2f}' for re in recs])
-                tb.add_row(['recall@500mm'] +
-                            [f'{recall500 * 100:.2f}' for re in recs])
-                logger.info(tb)
-                logger.info(f'MPJPE: {mpjpe:.2f}mm')
-                precision = np.mean(aps[0])
-                logger.info(f'precision: {precision:.2f}')
-
-            elif 'campus' in config.DATASET.TEST_DATASET \
-                or 'shelf' in config.DATASET.TEST_DATASET:
-                actor_pcp, avg_pcp, _, recall = test_loader.dataset.evaluate(preds)
-                msg = '     | Actor 1 | Actor 2 | Actor 3 | Average | \n' \
-                    ' PCP |  {pcp_1:.2f}  |  {pcp_2:.2f}  |  {pcp_3:.2f}  ' \
-                    '|  {pcp_avg:.2f}  |\t Recall@500mm: {recall:.4f}'.\
-                    format(pcp_1=actor_pcp[0] * 100,
-                        pcp_2=actor_pcp[1] * 100,
-                        pcp_3=actor_pcp[2] * 100,
-                        pcp_avg=avg_pcp * 100,
-                        recall=recall)
-                logger.info(msg)
-                precision = np.mean(avg_pcp)
-                logger.info(f'precision: {precision:.2f}')
 
 
 if __name__ == '__main__':

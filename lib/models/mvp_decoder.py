@@ -199,6 +199,7 @@ class MvPDecoderLayer(nn.Module):
             = torch.clamp(reference_points_projected2d_xy, -1.0, wh.max())
         reference_points_projected2d_xy \
             = do_transform_batch(reference_points_projected2d_xy, trans_batch)
+        # reference_points_projected2d_xy_ = reference_points_projected2d_xy.clone()
         reference_points_projected2d_xy \
             = reference_points_projected2d_xy \
             / torch.tensor(self.img_size, dtype=torch.float, device=device)
@@ -280,6 +281,7 @@ class MvPDecoderLayer(nn.Module):
         # ffn
         tgt = self.forward_ffn(tgt)
         return tgt
+        # return tgt, reference_points_absolute[:, 0], reference_points_projected2d_xy_
 
 
 class MvPDecoder(nn.Module):
@@ -319,8 +321,11 @@ class MvPDecoder(nn.Module):
         output = tgt
         intermediate = []
         intermediate_reference_points = []
+        # intermediate_reference_points_abs = []
+        # intermediate_reference_points_xy = []
         for lid, layer in enumerate(self.layers):
             reference_points_input = reference_points[:, :, None]
+            # output, reference_points_abs, reference_points_xy = layer(output, query_pos, reference_points_input,
             output = layer(output, query_pos, reference_points_input,
                            src_views, src_views_with_rayembed,
                            src_spatial_shapes,
@@ -337,11 +342,16 @@ class MvPDecoder(nn.Module):
             if self.return_intermediate:
                 intermediate.append(output)
                 intermediate_reference_points.append(reference_points)
+                # intermediate_reference_points_abs.append(reference_points_abs)
+                # intermediate_reference_points_xy.append(reference_points_xy)
 
         if self.return_intermediate:
             return torch.stack(intermediate), \
                    torch.stack(intermediate_reference_points)
+                #    torch.stack(intermediate_reference_points_abs), \
+                #    torch.stack(intermediate_reference_points_xy)
 
+        # return output, reference_points, reference_points_abs, intermediate_reference_points_xy
         return output, reference_points
 
 

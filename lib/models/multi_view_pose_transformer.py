@@ -26,6 +26,7 @@ from __future__ import print_function
 
 import torch
 import torch.nn as nn
+import time
 
 from models import pose_resnet
 # from core.loss import PerJointMSELoss
@@ -292,11 +293,18 @@ class MultiviewPosetransformer(nn.Module):
         left = tensor.shape[2:]
         return tensor.view(dim0 * dim1, *left)
 
-    def forward(self, views=None, meta=None):
+    def forward(self, views=None, meta=None, test_time=False):
+        if test_time:
+            start_time0 = time.time()
+
         if views is not None:
             all_feats = self.backbone(torch.cat(views, dim=0),
                                       self.use_feat_level)
             all_feats = all_feats[::-1]
+
+        if test_time:
+            start_time1 = time.time()
+
         batch, _, imageh, imagew = views[0].shape
         nview = len(views)
 
@@ -389,7 +397,9 @@ class MultiviewPosetransformer(nn.Module):
             reference_points = self.reference_points(query_embed).sigmoid()
 
         init_reference = reference_points  # B x 150 x 3
+        # out = {'raw_poses': init_reference.clone()}
 
+        # hs, inter_references, inter_references_abs, inter_references_xy = \
         hs, inter_references = \
             self.decoder(tgt, reference_points, src_flatten_views,
                          camera_rays,
@@ -398,6 +408,10 @@ class MultiviewPosetransformer(nn.Module):
                          src_valid_ratios=valid_ratios_views,
                          query_pos=query_embed,
                          src_padding_mask=mask_flatten_views)
+        # out.update({
+        #     'inter_poses': inter_references_abs,
+        #     'inter_poses_xy': inter_references_xy
+        # })
         outputs_classes = []
         outputs_coords = []
         for lvl in range(hs.shape[0]):
@@ -444,6 +458,16 @@ class MultiviewPosetransformer(nn.Module):
 
         out = {'pred_logits': outputs_classes[-1],
                'pred_poses': outputs_coords[-1]}
+        if test_time:
+            end_time = time.time()
+            full_time = -start_time0 + end_time
+            pose_time = -start_time1 + end_time
+            return out, full_time, pose_time
+        # out.update({
+        #     'pred_logits': outputs_classes[-1],
+        #     'pred_poses': outputs_coords[-1],
+        #     'init_poses': outputs_coords[0]
+        # })
 
         if self.aux_loss:
             out['aux_outputs'] = \

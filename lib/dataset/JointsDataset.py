@@ -189,6 +189,7 @@ class JointsDataset(Dataset):
         cam_standard_T = cam['standard_T']
 
         meta = {
+            'key': db_rec['key'],
             'image': image_file,
             'num_person': nposes,
             'joints_3d': joints_3d_u,

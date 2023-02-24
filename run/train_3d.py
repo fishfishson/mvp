@@ -29,6 +29,7 @@ import torchvision.transforms as transforms
 import argparse
 import os
 import pprint
+from tensorboardX import SummaryWriter
 
 import _init_paths
 import dataset
@@ -92,7 +93,10 @@ def get_optimizer(model_without_ddp, weight_decay, optim_type):
     if model_without_ddp.backbone is not None:
         for params in model_without_ddp.backbone.parameters():
             # If you want to train the whole model jointly, set it to be True.
-            params.requires_grad = False
+            if config.FINETUNE_BACKBONE:
+                params.requires_grad = True
+            else:
+                params.requires_grad = False
 
     lr_linear_proj_mult = config.DECODER.lr_linear_proj_mult
     lr_linear_proj_names = ['reference_points', 'sampling_offsets']
@@ -215,10 +219,17 @@ def main():
             './models', config.TRAIN.FINETUNE_MODEL)
 
     if config.TRAIN.RESUME:
+        print(f'RESUME MODEL FORM {final_output_dir}')
         start_epoch, _, checkpoint, optimizer,  best_precision \
             = load_checkpoint(model_without_ddp, optimizer, final_output_dir)
     else:
         start_epoch, checkpoint, best_precision = 0, None, 0
+    
+    writer_dict = {
+        'writer': SummaryWriter(log_dir=tb_log_dir),
+        'train_global_steps': 0,
+        'val_global_steps': 0
+    }
 
     # list for step decay
     if isinstance(config.DECODER.lr_decay_epoch, list):
@@ -243,8 +254,8 @@ def main():
     for epoch in range(start_epoch, end_epoch):
         print('Epoch: {}'.format(epoch))
         print('current lr {}'.format(optimizer.param_groups[0]["lr"]))
-        train_3d(config, model, optimizer, train_loader, epoch,
-                 final_output_dir, num_views=num_views)
+        train_3d(config, model, optimizer, train_loader, epoch, final_output_dir, writer_dict,
+                 num_views=num_views, finetune_backbone=config.FINETUNE_BACKBONE)
 
         lr_scheduler.step()
 
@@ -252,7 +263,7 @@ def main():
         for thr in inference_conf_thr:
             preds_single, meta_image_files_single = validate_3d(
                 config, model, test_loader,
-                final_output_dir, thr, num_views=num_views)
+                final_output_dir, thr, num_views=num_views, epoch=epoch)
             preds = collect_results(preds_single, len(test_dataset))
 
             if is_main_process():
@@ -260,7 +271,8 @@ def main():
                 precision = None
 
                 if 'panoptic' in config.DATASET.TEST_DATASET \
-                        or 'h36m' in config.DATASET.TEST_DATASET:
+                        or 'h36m' in config.DATASET.TEST_DATASET \
+                            or 'chi3d' in config.DATASET.TEST_DATASET:
                     tb = PrettyTable()
                     mpjpe_threshold = np.arange(25, 155, 25)
                     aps, recs, mpjpe, recall500 = \
@@ -305,7 +317,7 @@ def main():
                         'lr_scheduler': lr_scheduler.state_dict(),
                         'precision': best_precision,
                         'optimizer': optimizer.state_dict(),
-                    }, best_model, final_output_dir)
+                    }, best_model, final_output_dir, 'checkpoint_{:03}.pth.tar'.format(epoch))
                 else:
                     logger.info('=> saving checkpoint to {} (Best: {})'.
                                 format(final_output_dir, best_model))
@@ -314,7 +326,7 @@ def main():
                         'state_dict': model.module.state_dict(),
                         'precision': best_precision,
                         'optimizer': optimizer.state_dict(),
-                    }, best_model, final_output_dir)
+                    }, best_model, final_output_dir, 'checkpoint_{:03}.pth.tar'.format(epoch))
             dist.barrier()
 
     if is_main_process():
@@ -323,6 +335,8 @@ def main():
         logger.info('saving final model state to {}'.format(
             final_model_state_file))
         torch.save(model.module.state_dict(), final_model_state_file)
+    
+    writer_dict['writer'].close()
 
 
 if __name__ == '__main__':

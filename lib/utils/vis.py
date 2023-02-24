@@ -27,6 +27,8 @@ from matplotlib import pyplot as plt
 # from mpl_toolkits.mplot3d import Axes3D
 import pickle
 
+from easymocap.mytools.file_utils import save_numpy_dict
+
 matplotlib.use('Agg')
 
 
@@ -285,6 +287,89 @@ def save_3d_images_novel_view(config, meta, preds, file_name):
     plt.close(0)
 
 
+def save_debug_3d_json(config, meta, preds, output, vis=False):
+    output = os.path.join(output, 'blenderfig')
+    os.makedirs(output, exist_ok=True)
+    for b in range(preds.shape[0]):
+        gt = meta['joints_3d'][b].float().numpy() / 1000.
+        gt_vis = meta['joints_3d_vis'][b].float().numpy()
+        num_person = meta['num_person'][b]
+        gt = gt[:num_person]
+        gt_vis = gt_vis[:num_person]
+        pred = preds[b].copy() / 1000.
+        pred = pred[pred[:, 0, 3] >= 0]
+        data = {
+            'gt': np.concatenate(
+                [gt, np.ones_like(gt[..., :1])], axis=-1),
+            'pred': np.concatenate(
+                [pred[..., :3], np.ones_like(pred[..., :1])], axis=-1)
+        }
+        key = meta['key'][b].split('_')
+        name = '_'.join([key[0], key[1], key[-1]]) + '.json'
+        name = os.path.join(output, name)
+        save_numpy_dict(name, data)
+        if vis:
+            plt.figure(0, figsize=(10, 5))
+            plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05,
+                                top=0.95, wspace=0.05, hspace=0.15)
+
+            ax = plt.subplot(1, 2, 1, projection='3d')
+            for n in range(num_person):
+                joint = gt[n]
+                joint_vis = gt_vis[n]
+                for k in eval("LIMBS{}".format(len(joint))):
+                    if joint_vis[k[0], 0] and joint_vis[k[1], 0]:
+                        x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+                        y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+                        z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+                        ax.plot(x, y, z, c='r', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                                markeredgewidth=1)
+                    else:
+                        x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+                        y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+                        z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+                        ax.plot(x, y, z, c='r', ls='--', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                                markeredgewidth=1)
+            ax.set_xlim(-1, 1)
+            ax.set_ylim(-1, 1)
+            ax.set_zlim(0, 2)
+            ax.axis('off')
+
+            ax = plt.subplot(1, 2, 2, projection='3d')
+            # for n in range(num_person):
+            #     joint = gt[n]
+            #     joint_vis = gt_vis[n]
+            #     for k in eval("LIMBS{}".format(len(joint))):
+            #         if joint_vis[k[0], 0] and joint_vis[k[1], 0]:
+            #             x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+            #             y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+            #             z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+            #             ax.plot(x, y, z, c='r', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+            #                     markeredgewidth=1)
+            #         else:
+            #             x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+            #             y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+            #             z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+            #             ax.plot(x, y, z, c='r', ls='--', lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+            #                     markeredgewidth=1)
+            colors = ['b', 'g', 'c', 'y', 'm', 'orange', 'pink', 'royalblue', 'lightgreen', 'gold']
+            for n in range(len(pred)):
+                joint = pred[n]
+                if joint[0, 3] >= 0:
+                    for k in eval("LIMBS{}".format(len(joint))):
+                        x = [float(joint[k[0], 0]), float(joint[k[1], 0])]
+                        y = [float(joint[k[0], 1]), float(joint[k[1], 1])]
+                        z = [float(joint[k[0], 2]), float(joint[k[1], 2])]
+                        ax.plot(x, y, z, c=colors[int(n % 10)], lw=1.5, marker='o', markerfacecolor='w', markersize=2,
+                                markeredgewidth=1)
+            ax.set_xlim(-1, 1)
+            ax.set_ylim(-1, 1)
+            ax.set_zlim(0, 2)
+            ax.axis('off')
+            plt.savefig(name.replace('json', 'jpg'))
+            plt.close(0)
+
+
 def save_debug_3d_images(config, meta, preds, prefix):
     if not config.DEBUG.DEBUG:
         return
@@ -297,15 +382,16 @@ def save_debug_3d_images(config, meta, preds, prefix):
         os.makedirs(dirname1)
 
     prefix = os.path.join(dirname1, basename)
-    file_name = prefix + "_3d.png"
+    file_name = prefix + ".jpg"
 
     batch_size = meta['num_person'].shape[0]
+    assert batch_size == 1
     xplot = min(4, batch_size)
     yplot = int(math.ceil(float(batch_size) / xplot))
 
-    # width = 4.0 * xplot
-    # height = 4.0 * yplot
-    # fig = plt.figure(0, figsize=(width, height))
+    width = 4.0 * xplot
+    height = 4.0 * yplot
+    fig = plt.figure(0, figsize=(width, height))
     plt.subplots_adjust(left=0.05, right=0.95, bottom=0.05,
                         top=0.95, wspace=0.05, hspace=0.15)
     for i in range(batch_size):

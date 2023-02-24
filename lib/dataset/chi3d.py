@@ -29,26 +29,21 @@ import pickle
 import logging
 import os
 import copy
+from tqdm import tqdm
 
 from dataset.JointsDataset import JointsDataset
 from utils.transforms import projectPoints
 
+from easymocap.mytools.camera_utils import read_cameras
+
 
 logger = logging.getLogger(__name__)
 
-TRAIN_LIST = [
-    '160422_ultimatum1',
-    '160224_haggling1',
-    '160226_haggling1',
-    '161202_haggling1',
-    '160906_ian1',
-    '160906_ian2',
-    '160906_ian3',
-    '160906_band1',
-    '160906_band2',
-    # '160906_band3',
-]
-VAL_LIST = ['160906_pizza1', '160422_haggling1', '160906_ian5', '160906_band4']
+TRAIN_LIST = ['s02', 's04']
+VAL_LIST = ['s03']
+TEST_LIST = ['s03']
+
+body25topanoptic15 = [1,0,8,5,6,7,12,13,14,2,3,4,9,10,11]
 
 JOINTS_DEF = {
     'neck': 0,
@@ -84,26 +79,29 @@ LIMBS = [[0, 1],
          [13, 14]]
 
 
-class Panoptic(JointsDataset):
+class CHI3D(JointsDataset):
     def __init__(self, cfg, image_set, is_train, transform=None):
         super().__init__(cfg, image_set, is_train, transform)
         self.pixel_std = 200.0
         self.joints_def = JOINTS_DEF
         self.limbs = LIMBS
         self.num_joints = len(JOINTS_DEF)
+        self.joint_type = 'body25'
+        if self.joint_type == 'body25':
+            interval = 1
+        elif self.joint_type == 'panoptic15':
+            interval = 5
 
+        seqs = os.listdir(self.dataset_root)
         if self.image_set == 'train':
-            self.sequence_list = TRAIN_LIST
-            self._interval = 3
-            self.cam_list = [(0, 12), (0, 6), (0, 23), (0, 13), (0, 3)][
-                            :self.num_views]
-            self.num_views = len(self.cam_list)
+            self.sequence_list = [x for x in seqs if x[:3] in TRAIN_LIST]
+            self._interval = interval
         elif self.image_set == 'validation':
-            self.sequence_list = VAL_LIST
-            self._interval = 12
-            self.cam_list = [(0, 12), (0, 6), (0, 23), (0, 13), (0, 3)][
-                            :self.num_views]
-            self.num_views = len(self.cam_list)
+            self.sequence_list = [x for x in seqs if x[:3] in VAL_LIST]
+            self._interval = interval
+        elif self.image_set == 'test':
+            self.sequence_list = [x for x in seqs if x[:3] in TEST_LIST]
+            self._interval = interval
 
         self.db_file = 'mvp_{}_cam{}.pkl'.\
             format(self.image_set, self.num_views)
@@ -113,42 +111,42 @@ class Panoptic(JointsDataset):
             info = pickle.load(open(self.db_file, 'rb'))
             assert info['sequence_list'] == self.sequence_list
             assert info['interval'] == self._interval
-            assert info['cam_list'] == self.cam_list
+            # assert info['cam_list'] == self.cam_list
+            assert info['joint_type'] == self.joint_type
             self.db = info['db']
         else:
             self.db = self._get_db()
             info = {
                 'sequence_list': self.sequence_list,
                 'interval': self._interval,
-                'cam_list': self.cam_list,
+                # 'cam_list': self.cam_list,
+                'joint_type': self.joint_type,
                 'db': self.db
             }
             pickle.dump(info, open(self.db_file, 'wb'))
         self.db_size = len(self.db)
 
     def _get_db(self):
-        width = 1920
-        height = 1080
+        width = 900
+        height = 900
         db = []
-        for seq in self.sequence_list:
+        for seq in tqdm(self.sequence_list):
 
             cameras = self._get_cam(seq)
-            curr_anno = osp.join(self.dataset_root,
-                                 seq, 'hdPose3d_stage1_coco19')
+            curr_anno = osp.join(self.dataset_root, seq, self.joint_type)
             anno_files = sorted(glob.iglob('{:s}/*.json'.format(curr_anno)))
 
             for i, file in enumerate(anno_files):
                 if i % self._interval == 0:
                     with open(file) as dfile:
-                        bodies = json.load(dfile)['bodies']
+                        bodies = json.load(dfile)
                     if len(bodies) == 0:
                         continue
 
                     for k, v in cameras.items():
-                        postfix = osp.basename(file).replace('body3DScene', '')
-                        prefix = '{:02d}_{:02d}'.format(k[0], k[1])
-                        image = osp.join(seq, 'hdImgs', prefix,
-                                         prefix + postfix)
+                        # postfix = osp.basename(file).replace('body3DScene', '')
+                        # prefix = '{:02d}_{:02d}'.format(k[0], k[1])
+                        image = osp.join(seq, 'images', k, osp.basename(file))
                         image = image.replace('json', 'jpg')
 
                         all_poses_3d = []
@@ -156,22 +154,25 @@ class Panoptic(JointsDataset):
                         all_poses = []
                         all_poses_vis = []
                         for body in bodies:
-                            pose3d = np.array(body['joints19'])\
-                                .reshape((-1, 4))
+                            pose3d = np.array(body['keypoints3d'])\
+                                .reshape((-1, 3))
+                            if self.joint_type == 'body25':
+                                pose3d = pose3d[body25topanoptic15]
                             pose3d = pose3d[:self.num_joints]
 
-                            joints_vis = pose3d[:, -1] > 0.1
+                            # joints_vis = pose3d[:, -1] > 0.1
+                            joints_vis = np.ones_like(pose3d[:, 0])
 
                             if not joints_vis[self.root_id]:
                                 continue
 
                             # Coordinate transformation
-                            M = np.array([[1.0, 0.0, 0.0],
-                                          [0.0, 0.0, -1.0],
-                                          [0.0, 1.0, 0.0]])
-                            pose3d[:, 0:3] = pose3d[:, 0:3].dot(M)
+                            # M = np.array([[1.0, 0.0, 0.0],
+                            #               [0.0, 0.0, -1.0],
+                            #               [0.0, 1.0, 0.0]])
+                            # pose3d[:, 0:3] = pose3d[:, 0:3].dot(M)
 
-                            all_poses_3d.append(pose3d[:, 0:3] * 10.0)
+                            all_poses_3d.append(pose3d[:, 0:3] * 1000.0)
                             all_poses_vis_3d.append(
                                 np.repeat(
                                     np.reshape(
@@ -200,8 +201,8 @@ class Panoptic(JointsDataset):
                             our_cam = {}
                             our_cam['R'] = v['R']
                             our_cam['T'] = -np.dot(
-                                v['R'].T, v['t']) * 10.0  # cm to mm
-                            our_cam['standard_T'] = v['t'] * 10.0
+                                v['R'].T, v['t']) * 1000.0  # m to mm
+                            our_cam['standard_T'] = v['t'] * 1000.0
                             our_cam['fx'] = np.array(v['K'][0, 0])
                             our_cam['fy'] = np.array(v['K'][1, 1])
                             our_cam['cx'] = np.array(v['K'][0, 2])
@@ -212,8 +213,8 @@ class Panoptic(JointsDataset):
                                 .reshape(2, 1)
 
                             db.append({
-                                'key': "{}_{}{}".format(
-                                    seq, prefix, postfix.split('.')[0]),
+                                'key': "{}_{}_{}".format(
+                                    seq, k, osp.basename(file).split('.')[0]),
                                 'image': osp.join(self.dataset_root, image),
                                 'joints_3d': all_poses_3d,
                                 'joints_3d_vis': all_poses_vis_3d,
@@ -224,25 +225,17 @@ class Panoptic(JointsDataset):
         return db
 
     def _get_cam(self, seq):
-        cam_file = osp.join(self.dataset_root, seq,
-                            # 'calibration_{:s}.json'.format(seq))
-                            'calibration.json'.format(seq))
-        with open(cam_file) as cfile:
-            calib = json.load(cfile)
+        calib = read_cameras(osp.join(self.dataset_root, seq))
 
-        M = np.array([[1.0, 0.0, 0.0],
-                      [0.0, 0.0, -1.0],
-                      [0.0, 1.0, 0.0]])
         cameras = {}
-        for cam in calib['cameras']:
-            if (cam['panel'], cam['node']) in self.cam_list:
-                sel_cam = {}
-                sel_cam['K'] = np.array(cam['K'])
-                sel_cam['distCoef'] = np.array(cam['distCoef'])
-                sel_cam['R'] = np.array(cam['R']).dot(M)
-                sel_cam['t'] = np.array(cam['t']).reshape((3, 1))
-                cameras[(cam['panel'], cam['node'])] = sel_cam
-        return cameras
+        for k, v in calib.items():
+            sel_cam = {}
+            sel_cam['K'] = np.array(v['K'])
+            sel_cam['distCoef'] = np.array(v['dist']).flatten()
+            sel_cam['R'] = np.array(v['R'])
+            sel_cam['t'] = np.array(v['T']).reshape(3, 1)
+            cameras[k] = sel_cam
+        return cameras 
 
     # def loading_while(self, saving_path):
     #     try:
@@ -262,7 +255,7 @@ class Panoptic(JointsDataset):
 
     def __len__(self):
         return self.db_size // self.num_views
-
+    
     def evaluate(self, preds):
         eval_list = []
         gt_num = self.db_size // self.num_views

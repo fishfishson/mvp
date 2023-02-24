@@ -33,6 +33,7 @@ config.OUTPUT_DIR = 'output'
 config.LOG_DIR = 'log'
 config.DATA_DIR = ''
 config.BACKBONE_MODEL = 'pose_resnet'
+config.FINETUNE_BACKBONE = False
 config.MODEL = 'multi_view_pose_transformer'
 config.GPUS = '0,1'
 config.WORKERS = 8
@@ -249,7 +250,7 @@ config.DECODER.pose_embed_layer = 3
 
 config.DECODER.query_embed_type = 'person_joint'
 config.DECODER.optimizer = 'adam'
-config.DECODER.lr_decay_epoch = [40, ]
+config.DECODER.lr_decay_epoch = [20, ]
 
 config.DECODER.projattn_posembed_mode = 'no_use'
 
