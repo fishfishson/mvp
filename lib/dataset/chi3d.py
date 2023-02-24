@@ -39,7 +39,7 @@ from easymocap.mytools.camera_utils import read_cameras
 
 logger = logging.getLogger(__name__)
 
-TRAIN_LIST = ['s02', 's04']
+TRAIN_LIST = ['s02', 's04', 's05']
 VAL_LIST = ['s03']
 TEST_LIST = ['s03']
 
@@ -154,8 +154,10 @@ class CHI3D(JointsDataset):
                         all_poses = []
                         all_poses_vis = []
                         for body in bodies:
-                            pose3d = np.array(body['keypoints3d'])\
-                                .reshape((-1, 3))
+                            pose3d = np.array(body['keypoints3d'])
+                            if pose3d.shape[-1] == 4:
+                                pose3d = pose3d[..., :3]
+                            pose3d = pose3d.reshape((-1, 3))
                             if self.joint_type == 'body25':
                                 pose3d = pose3d[body25topanoptic15]
                             pose3d = pose3d[:self.num_joints]
