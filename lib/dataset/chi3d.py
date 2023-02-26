@@ -39,10 +39,6 @@ from easymocap.mytools.camera_utils import read_cameras
 
 logger = logging.getLogger(__name__)
 
-TRAIN_LIST = ['s02', 's04', 's05']
-VAL_LIST = ['s03']
-TEST_LIST = ['s03']
-
 body25topanoptic15 = [1,0,8,5,6,7,12,13,14,2,3,4,9,10,11]
 
 JOINTS_DEF = {
@@ -94,18 +90,23 @@ class CHI3D(JointsDataset):
 
         seqs = os.listdir(self.dataset_root)
         if self.image_set == 'train':
-            self.sequence_list = [x for x in seqs if x[:3] in TRAIN_LIST]
-            self._interval = interval
+            # self.sequence_list = TRAIN_LIST
+            sequence_list = self.train_list
         elif self.image_set == 'validation':
-            self.sequence_list = [x for x in seqs if x[:3] in VAL_LIST]
-            self._interval = interval
+            sequence_list = self.val_list
         elif self.image_set == 'test':
-            self.sequence_list = [x for x in seqs if x[:3] in TEST_LIST]
-            self._interval = interval
+            sequence_list = self.test_list
+        self.sequence_list = []
+        for x in sequence_list:
+            for seq in seqs:
+                if x in seq:
+                    self.sequence_list.append(seq)
+        self._interval = interval
 
-        self.db_file = 'mvp_{}_cam{}.pkl'.\
-            format(self.image_set, self.num_views)
-        self.db_file = os.path.join(self.dataset_root, self.db_file)
+        os.makedirs('./cache', exist_ok=True)
+        self.db_file = 'mvp_{}_cam{}_{}.pkl'.\
+            format(self.image_set, self.num_views, self.exp_name)
+        self.db_file = os.path.join('./cache', self.db_file)
 
         if osp.exists(self.db_file):
             info = pickle.load(open(self.db_file, 'rb'))
@@ -115,6 +116,7 @@ class CHI3D(JointsDataset):
             assert info['joint_type'] == self.joint_type
             self.db = info['db']
         else:
+            print(self.sequence_list)
             self.db = self._get_db()
             info = {
                 'sequence_list': self.sequence_list,
@@ -127,8 +129,8 @@ class CHI3D(JointsDataset):
         self.db_size = len(self.db)
 
     def _get_db(self):
-        width = 900
-        height = 900
+        width = self.ori_image_size[0]
+        height = self.ori_image_size[1]
         db = []
         for seq in tqdm(self.sequence_list):
 

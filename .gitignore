@@ -5,3 +5,4 @@ models/
 *.slurm
 *.out
 *.pyc
+cache/

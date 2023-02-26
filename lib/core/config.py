@@ -112,6 +112,11 @@ config.LOSS.USE_DIFFERENT_JOINTS_WEIGHT = False
 # DATASET related params
 config.DATASET = edict()
 config.DATASET.ROOT = '../data/panoptic/'
+config.DATASET.ORI_IMAGE_SIZE = []
+config.DATASET.CAM_LIST = None
+config.DATASET.TRAIN_LIST = None
+config.DATASET.VAL_LIST = None
+config.DATASET.TEST_LIST = None
 config.DATASET.TRAIN_DATASET = 'panoptic'
 config.DATASET.TEST_DATASET = 'panoptic'
 config.DATASET.TRAIN_SUBSET = 'train'
