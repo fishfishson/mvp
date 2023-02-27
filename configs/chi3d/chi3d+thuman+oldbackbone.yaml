@@ -48,7 +48,7 @@ DATASET:
   ROOTIDX: 2
   CAMERA_NUM: 4
 NETWORK:
-  PRETRAINED_BACKBONE: "models/pose_resnet50_panoptic.pth"
+  PRETRAINED_BACKBONE: "models/pose_resnet50_panoptic.pth.tar"
   PRETRAINED:  ''
   TARGET_TYPE: gaussian
   IMAGE_SIZE:
