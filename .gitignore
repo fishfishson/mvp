@@ -6,3 +6,4 @@ models/
 *.out
 *.pyc
 cache/
+exp-out/
