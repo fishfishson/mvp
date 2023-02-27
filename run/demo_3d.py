@@ -36,7 +36,7 @@ import models
 
 from core.config import config
 from core.config import update_config
-from core.function import validate_3d
+from core.function import demo_3d 
 from utils.utils import create_logger
 import lib.utils.misc as utils
 from mmcv.runner import get_dist_info
@@ -74,8 +74,8 @@ def main():
     # logger, final_output_dir, tb_log_dir = create_logger(
     #     config, args.cfg, 'validate')
     config.GPUS = '0'
-    config.DATASET.TEST_SUBSET = 'test'
-    config.DATASET.TRAIN_SUBSET = 'test'
+    config.DATASET.TEST_SUBSET = 'demo'
+    config.DATASET.TRAIN_SUBSET = 'demo'
     device = torch.device(args.device)
 
     utils.init_distributed_mode(args)
@@ -144,7 +144,7 @@ def main():
         raise ValueError('Check the model file for testing!')
 
     for thr in config.DECODER.inference_conf_thr:
-        preds_single, meta_image_files_single = validate_3d(
+        preds_single, meta_image_files_single = demo_3d(
             config, model, test_loader, args.out, thr,
             num_views=num_views)
         preds = collect_results(preds_single, len(test_dataset))

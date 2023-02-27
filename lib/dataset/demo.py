@@ -14,7 +14,6 @@ from tqdm import tqdm
 
 from dataset.JointsDataset import JointsDataset
 from utils.transforms import projectPoints
-from utils.rays import get_rays, get_ray_directions
 import trimesh
 
 from easymocap.mytools.camera_utils import read_cameras
@@ -81,8 +80,10 @@ class DEMO(JointsDataset):
             self.cam_list = cfg.DATASET.CAM_LIST.split(' ')
         self._interval = 1
         
-        self.db_file = 'voxelpose_{}_cam{}.pkl'.format(self.image_set, self.num_views)
-        self.db_file = os.path.join(self.dataset_root, self.db_file)
+        os.makedirs('./cache', exist_ok=True)
+        self.db_file = 'mvp_{}_cam{}_{}.pkl'\
+            .format(self.image_set, self.num_views, self.exp_name)
+        self.db_file = os.path.join('./cache', self.db_file)
 
         if osp.exists(self.db_file):
             info = pickle.load(open(self.db_file, 'rb'))
@@ -139,16 +140,17 @@ class DEMO(JointsDataset):
                             #     continue
 
                             # Coordinate transformation
-                            M = np.array([[1.0, 0.0, 0.0],
-                                          [0.0, 1.0, 0.0],
-                                          [0.0, 0.0, 1.0]])
-                            pose3d[:, 0:3] = pose3d[:, 0:3].dot(M)
+                            # M = np.array([[1.0, 0.0, 0.0],
+                            #               [0.0, 1.0, 0.0],
+                            #               [0.0, 0.0, 1.0]])
+                            # pose3d[:, 0:3] = pose3d[:, 0:3].dot(M)
 
                             all_poses_3d.append(pose3d[:, 0:3] * 1000.0)
                             # all_poses_3d.append(pose3d[:, 0:3])
                             all_poses_vis_3d.append(
                                 np.repeat(
-                                    np.reshape(joints_vis, (-1, 1)), 3, axis=1))
+                                    np.reshape(
+                                        joints_vis, (-1, 1)), 3, axis=1))
 
                             pose2d = np.zeros((pose3d.shape[0], 2))
                             pose2d[:, :2] = projectPoints(
@@ -169,17 +171,21 @@ class DEMO(JointsDataset):
                         if len(all_poses_3d) > 0:
                             our_cam = {}
                             our_cam['R'] = v['R']
-                            our_cam['T'] = -np.dot(v['R'].T, v['t']) * 1000.0  # m to mm
+                            our_cam['T'] = -np.dot(
+                                v['R'].T, v['t']) * 1000.0  # m to mm
+                            our_cam['standard_T'] = v['t'] * 1000.0
                             our_cam['fx'] = np.array(v['K'][0, 0])
                             our_cam['fy'] = np.array(v['K'][1, 1])
                             our_cam['cx'] = np.array(v['K'][0, 2])
                             our_cam['cy'] = np.array(v['K'][1, 2])
-                            our_cam['k'] = v['distCoef'][[0, 1, 4]].reshape(3, 1)
-                            our_cam['p'] = v['distCoef'][[2, 3]].reshape(2, 1)
+                            our_cam['k'] = v['distCoef'][[0, 1, 4]]\
+                                .reshape(3, 1)
+                            our_cam['p'] = v['distCoef'][[2, 3]]\
+                                .reshape(2, 1)
 
                             db.append({
-                                # 'key': "{}_{}{}".format(seq, prefix, postfix.split('.')[0]),
-                                'key': "{}_{}_{}".format(seq, k, osp.basename(file).split('.')[0]),
+                                'key': "{}_{}_{}".format(
+                                    seq, k, osp.basename(file).split('.')[0]),
                                 'image': osp.join(self.dataset_root, image),
                                 'joints_3d': all_poses_3d,
                                 'joints_3d_vis': all_poses_vis_3d,
@@ -193,39 +199,31 @@ class DEMO(JointsDataset):
         calib = read_cameras(osp.join(self.dataset_root, seq))
 
         cameras = {}
-        M = np.array([[1.0, 0.0, 0.0],
-                      [0.0, 1.0, 0.0],
-                      [0.0, 0.0, 1.0]])
         for k, v in calib.items():
             if k not in self.cam_list: continue
             sel_cam = {}
             sel_cam['K'] = np.array(v['K'])
             sel_cam['distCoef'] = np.array(v['dist']).flatten()
-            sel_cam['R'] = np.array(v['R']).dot(M)
+            sel_cam['R'] = np.array(v['R'])
             sel_cam['t'] = np.array(v['T']).reshape(3, 1)
             cameras[k] = sel_cam
         return cameras
     
+    # def loading_while(self, saving_path):
+    #     try:
+    #         temp = np.load(saving_path + '.npz')
+    #         return temp
+    #     except Exception as e:
+    #         print('loading error, retrying loading')
+    #         return None
+    
     def __getitem__(self, idx):
-        input, target, weight, target_3d, meta, input_heatmap = [], [], [], [], [], []
-
-        # if self.image_set == 'train':
-        #     # camera_num = np.random.choice([5], size=1)
-        #     select_cam = np.random.choice(self.num_views, size=5, replace=False)
-        # elif self.image_set == 'validation':
-        #     select_cam = list(range(self.num_views))
-
+        input, meta = [], []
         for k in range(self.num_views):
-            i, t, w, t3, m, ih = super().__getitem__(self.num_views * idx + k)
-            if i is None:
-                continue
+            i, m = super().__getitem__(self.num_views * idx + k)
             input.append(i)
-            target.append(t)
-            weight.append(w)
-            target_3d.append(t3)
             meta.append(m)
-            input_heatmap.append(ih)
-        return input, target, weight, target_3d, meta, input_heatmap
+        return input, meta
 
     def __len__(self):
         return self.db_size // self.num_views

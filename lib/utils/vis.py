@@ -288,7 +288,7 @@ def save_3d_images_novel_view(config, meta, preds, file_name):
 
 
 def save_debug_3d_json(config, meta, preds, output, vis=False):
-    output = os.path.join(output, 'blenderfig')
+    output = os.path.join(output)
     os.makedirs(output, exist_ok=True)
     for b in range(preds.shape[0]):
         gt = meta['joints_3d'][b].float().numpy() / 1000.
@@ -302,7 +302,7 @@ def save_debug_3d_json(config, meta, preds, output, vis=False):
             'gt': np.concatenate(
                 [gt, np.ones_like(gt[..., :1])], axis=-1),
             'pred': np.concatenate(
-                [pred[..., :3], np.ones_like(pred[..., :1])], axis=-1)
+                [pred[..., :3], pred[..., 3:]], axis=-1)
         }
         key = meta['key'][b].split('_')
         name = '_'.join([key[0], key[1], key[-1]]) + '.json'
@@ -369,6 +369,26 @@ def save_debug_3d_json(config, meta, preds, output, vis=False):
             plt.savefig(name.replace('json', 'jpg'))
             plt.close(0)
 
+def save_demo_3d_json(config, meta, preds, output, vis=False):
+    output = os.path.join(output)
+    os.makedirs(output, exist_ok=True)
+    for b in range(preds.shape[0]):
+        gt = meta['joints_3d'][b].float().numpy() / 1000.
+        gt_vis = meta['joints_3d_vis'][b].float().numpy()
+        num_person = meta['num_person'][b]
+        gt = gt[:num_person]
+        gt_vis = gt_vis[:num_person]
+        pred = preds[b].copy() / 1000.
+        pred = pred[pred[:, 0, 3] >= 0]
+        data = {
+            'gt': np.concatenate(
+                [gt, np.ones_like(gt[..., :1])], axis=-1),
+            'pred': np.concatenate(
+                [pred[..., :3], pred[..., 3:]], axis=-1)
+        }
+        name = meta['key'][0].split('_')[-1] + '.json'
+        name = os.path.join(output, name)
+        save_numpy_dict(name, data)
 
 def save_debug_3d_images(config, meta, preds, prefix):
     if not config.DEBUG.DEBUG:
